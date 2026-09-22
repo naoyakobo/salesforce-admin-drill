@@ -4,19 +4,26 @@ const app = document.querySelector("#app");
 
 const initialState = {
   attempts: {},
+  allProgress: null,
   bookmarks: [],
   sessions: [],
   preferences: { shuffleAll: false },
 };
 
 let bank = [];
+let bankMarkdown = "";
 let state = loadState();
 let session = null;
 let deferredInstallPrompt = null;
 
 function loadState() {
   try {
-    return { ...initialState, ...JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") };
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+    return {
+      ...structuredClone(initialState),
+      ...stored,
+      preferences: { ...initialState.preferences, ...(stored.preferences || {}) },
+    };
   } catch {
     return structuredClone(initialState);
   }
@@ -84,6 +91,14 @@ function stats() {
   return { attempted: attempted.length, correct, weak, bookmarks: state.bookmarks.length };
 }
 
+function allProgressSummary() {
+  if (!state.allProgress || !Array.isArray(state.allProgress.questionIds)) return null;
+  const total = state.allProgress.questionIds.length;
+  const index = Math.min(Math.max(state.allProgress.index || 0, 0), Math.max(total - 1, 0));
+  if (!total || index >= total) return null;
+  return { index, total };
+}
+
 function setNav(view) {
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.classList.toggle("active", button.dataset.view === view);
@@ -94,6 +109,7 @@ function renderHome() {
   session = null;
   setNav("home");
   const summary = stats();
+  const progressSummary = allProgressSummary();
   const progress = Math.round((summary.attempted / bank.length) * 100);
   app.innerHTML = `
     <section class="hero card">
@@ -110,7 +126,7 @@ function renderHome() {
 
     <h2 class="section-title">学習モード</h2>
     <section class="mode-grid">
-      ${modeCard("all", "全問題", `全${bank.length}問を${state.preferences.shuffleAll ? "シャッフル" : "順番"}で学習します。`, `${bank.length}問`)}
+      ${modeCard("all", "全問題", `全${bank.length}問を${state.preferences.shuffleAll ? "シャッフル" : "順番"}で学習します。${progressSummary ? `前回は${progressSummary.index + 1}問目まで進んでいます。` : ""}`, progressSummary ? `${progressSummary.index + 1}/${progressSummary.total}` : `${bank.length}問`)}
       ${modeCard("exam", "模擬試験", "本番相当の60問をランダム出題します。解説は終了後に確認できます。", "60問")}
       ${modeCard("weak", "間違えた問題", "直近で間違えた問題だけを解き直します。", `${summary.weak}問`, summary.weak === 0)}
       ${modeCard("bookmarks", "ブックマーク", "あとで確認したい問題をまとめて復習します。", `${summary.bookmarks}問`, summary.bookmarks === 0)}
@@ -124,8 +140,29 @@ function renderHome() {
     </section>
   `;
   document.querySelectorAll("[data-mode]").forEach((button) => {
-    button.addEventListener("click", () => startSession(button.dataset.mode));
+    button.addEventListener("click", () => {
+      if (button.dataset.mode === "all" && allProgressSummary()) renderAllResumeChoice();
+      else startSession(button.dataset.mode);
+    });
   });
+}
+
+function renderAllResumeChoice() {
+  const progress = allProgressSummary();
+  app.innerHTML = `
+    <section class="result card">
+      <h2>全問題の続きがあります</h2>
+      <p>${progress.index + 1} / ${progress.total} 問目から再開できます。最初から始めると、全問題モードの途中経過は上書きされます。</p>
+      <div class="result-actions">
+        <button class="primary-button wide" id="resume-all-button" type="button">途中から再開</button>
+        <button class="secondary-button wide" id="restart-all-button" type="button">最初から始める</button>
+        <button class="text-button" id="back-home-button" type="button">戻る</button>
+      </div>
+    </section>
+  `;
+  document.querySelector("#resume-all-button").addEventListener("click", () => startSession("all", { resume: true }));
+  document.querySelector("#restart-all-button").addEventListener("click", () => startSession("all", { restart: true }));
+  document.querySelector("#back-home-button").addEventListener("click", renderHome);
 }
 
 function modeCard(mode, title, description, badge, disabled = false) {
@@ -137,11 +174,23 @@ function modeCard(mode, title, description, badge, disabled = false) {
   `;
 }
 
-function startSession(mode) {
+function startSession(mode, options = {}) {
   let questions = bank;
   let title = "全問題";
   let exam = false;
-  if (mode === "all" && state.preferences.shuffleAll) questions = shuffle(bank);
+  let index = 0;
+  if (mode === "all") {
+    const progress = allProgressSummary();
+    if (options.resume && progress) {
+      const byId = new Map(bank.map((question) => [question.id, question]));
+      questions = state.allProgress.questionIds.map((id) => byId.get(id)).filter(Boolean);
+      index = Math.min(progress.index, Math.max(questions.length - 1, 0));
+    } else {
+      questions = state.preferences.shuffleAll ? shuffle(bank) : bank;
+      state.allProgress = { questionIds: questions.map((question) => question.id), index: 0 };
+      saveState();
+    }
+  }
   if (mode === "exam") {
     questions = shuffle(bank).slice(0, 60);
     title = "模擬試験";
@@ -158,7 +207,7 @@ function startSession(mode) {
   if (!questions.length) return;
 
   session = {
-    mode, title, exam, questions, index: 0, selected: [], checked: false,
+    mode, title, exam, questions, index, selected: [], checked: false,
     answers: [], startedAt: new Date().toISOString(),
   };
   renderQuestion();
@@ -167,6 +216,8 @@ function startSession(mode) {
 function renderQuestion() {
   const q = session.questions[session.index];
   const bookmarked = state.bookmarks.includes(q.id);
+  const attempt = state.attempts[q.id] || { total: 0, correct: 0 };
+  const incorrect = Math.max((attempt.total || 0) - (attempt.correct || 0), 0);
   const isLast = session.index === session.questions.length - 1;
   const canCheck = session.selected.length === q.required;
   const feedback = session.checked && !session.exam ? renderFeedback(q) : "";
@@ -183,6 +234,10 @@ function renderQuestion() {
       <div class="question-top">
         <span class="question-number">${q.id}</span>
         <button class="bookmark-button ${bookmarked ? "active" : ""}" id="bookmark-button" type="button" aria-label="ブックマーク">${bookmarked ? "★" : "☆"}</button>
+      </div>
+      <div class="question-stats" aria-label="この問題の回答履歴">
+        <span class="mini-stat correct">正解 ${attempt.correct || 0}回</span>
+        <span class="mini-stat incorrect">不正解 ${incorrect}回</span>
       </div>
       <p class="question-text">${q.text}</p>
       ${q.type === "multiple" ? `<p class="select-hint">正しいものを${q.required}つ選択してください</p>` : ""}
@@ -242,6 +297,7 @@ function checkAnswer() {
   attempt.correct += isCorrect ? 1 : 0;
   attempt.lastCorrect = isCorrect;
   state.attempts[q.id] = attempt;
+  updateAllProgressAfterAnswer();
   saveState();
 
   if (session.exam) {
@@ -250,6 +306,15 @@ function checkAnswer() {
     session.checked = true;
     renderQuestion();
   }
+}
+
+function updateAllProgressAfterAnswer() {
+  if (session.mode !== "all") return;
+  const nextIndex = Math.min(session.index + 1, session.questions.length);
+  state.allProgress = {
+    questionIds: session.questions.map((question) => question.id),
+    index: nextIndex,
+  };
 }
 
 function renderFeedback(q) {
@@ -275,13 +340,14 @@ function nextQuestion() {
 
 function finishSession() {
   const correct = session.answers.filter((answer) => answer.correct).length;
-  const total = session.questions.length;
+  const total = session.answers.length || session.questions.length;
   const percentage = Math.round((correct / total) * 100);
   state.sessions.unshift({
     mode: session.mode, title: session.title, correct, total, percentage,
     finishedAt: new Date().toISOString(),
   });
   state.sessions = state.sessions.slice(0, 30);
+  if (session.mode === "all") state.allProgress = null;
   saveState();
   app.innerHTML = `
     <section class="result card">
@@ -328,6 +394,42 @@ function renderHistory() {
   `;
 }
 
+function renderNotes() {
+  session = null;
+  setNav("notes");
+  const overview = extractMarkdownSection(bankMarkdown, "## 方針", "## 問題");
+  const corrections = extractMarkdownSection(bankMarkdown, "## 修正履歴", "## 公式参照先");
+  const references = extractMarkdownSection(bankMarkdown, "## 公式参照先", "## 確認事項");
+  const questions = extractMarkdownSection(bankMarkdown, "## 問題", "## 正答と解説");
+
+  app.innerHTML = `
+    <section class="hero card">
+      <div class="hero-row">
+        <div>
+          <h2>学習メモ</h2>
+          <p>問題作成時のインプットを読み物として確認できます。公式情報に合わせて直した内容もここに残しています。</p>
+        </div>
+      </div>
+    </section>
+    <section class="notes-tabs" aria-label="メモの表示切り替え">
+      <button class="note-tab active" data-note="overview" type="button">方針</button>
+      <button class="note-tab" data-note="corrections" type="button">修正履歴</button>
+      <button class="note-tab" data-note="questions" type="button">問題本文</button>
+      <button class="note-tab" data-note="references" type="button">参照</button>
+    </section>
+    <section class="notes-content card" id="notes-content"></section>
+  `;
+
+  const sections = { overview, corrections, questions, references };
+  const content = document.querySelector("#notes-content");
+  const show = (key) => {
+    document.querySelectorAll(".note-tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.note === key));
+    content.innerHTML = markdownToHtml(sections[key] || "表示できるメモがありません。");
+  };
+  document.querySelectorAll(".note-tab").forEach((button) => button.addEventListener("click", () => show(button.dataset.note)));
+  show("overview");
+}
+
 function renderSettings() {
   session = null;
   setNav("settings");
@@ -363,6 +465,94 @@ function renderSettings() {
   });
 }
 
+function extractMarkdownSection(markdown, startHeading, endHeading) {
+  const start = markdown.indexOf(startHeading);
+  if (start < 0) return "";
+  const end = markdown.indexOf(endHeading, start + startHeading.length);
+  return markdown.slice(start, end < 0 ? markdown.length : end).trim();
+}
+
+function markdownToHtml(markdown) {
+  const html = [];
+  let inList = false;
+  let inTable = false;
+
+  const closeList = () => {
+    if (inList) {
+      html.push("</ul>");
+      inList = false;
+    }
+  };
+  const closeTable = () => {
+    if (inTable) {
+      html.push("</tbody></table>");
+      inTable = false;
+    }
+  };
+
+  for (const rawLine of markdown.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) {
+      closeList();
+      closeTable();
+      continue;
+    }
+
+    if (line.startsWith("|") && line.endsWith("|")) {
+      closeList();
+      if (/^\|\s*-+/.test(line)) continue;
+      const cells = line.split("|").slice(1, -1).map((cell) => inlineMarkdown(cell.trim()));
+      if (!inTable) {
+        html.push("<table><tbody>");
+        inTable = true;
+      }
+      html.push(`<tr>${cells.map((cell) => `<td>${cell}</td>`).join("")}</tr>`);
+      continue;
+    }
+
+    closeTable();
+
+    const heading = line.match(/^(#{1,4})\s+(.+)$/);
+    if (heading) {
+      closeList();
+      const level = Math.min(heading[1].length + 1, 5);
+      html.push(`<h${level}>${inlineMarkdown(heading[2])}</h${level}>`);
+      continue;
+    }
+
+    const list = line.match(/^[-*]\s+(.+)$/);
+    if (list) {
+      if (!inList) {
+        html.push("<ul>");
+        inList = true;
+      }
+      html.push(`<li>${inlineMarkdown(list[1])}</li>`);
+      continue;
+    }
+
+    closeList();
+    html.push(`<p>${inlineMarkdown(line)}</p>`);
+  }
+
+  closeList();
+  closeTable();
+  return html.join("");
+}
+
+function inlineMarkdown(value) {
+  return escapeHtml(value)
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/`(.+?)`/g, "<code>$1</code>");
+}
+
+function escapeHtml(value) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
 function formatDate(value) {
   return new Intl.DateTimeFormat("ja-JP", {
     month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit",
@@ -373,7 +563,8 @@ async function bootstrap() {
   try {
     const response = await fetch(BANK_URL);
     if (!response.ok) throw new Error("問題集を取得できませんでした。");
-    bank = parseBank(await response.text());
+    bankMarkdown = await response.text();
+    bank = parseBank(bankMarkdown);
     if (!bank.length || bank.some((question) => !question.correct)) throw new Error("問題集の解析に失敗しました。");
     renderHome();
   } catch (error) {
@@ -385,6 +576,7 @@ document.querySelectorAll(".nav-item").forEach((button) => {
   button.addEventListener("click", () => {
     if (button.dataset.view === "home") renderHome();
     if (button.dataset.view === "history") renderHistory();
+    if (button.dataset.view === "notes") renderNotes();
     if (button.dataset.view === "settings") renderSettings();
   });
 });

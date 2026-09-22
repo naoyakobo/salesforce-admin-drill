@@ -1,4 +1,4 @@
-const CACHE = "salesforce-admin-drill-v1";
+const CACHE = "salesforce-admin-drill-v2";
 const ASSETS = [
   "./",
   "./index.html",
