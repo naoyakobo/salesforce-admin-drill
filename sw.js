@@ -1,9 +1,9 @@
-const CACHE = "salesforce-admin-drill-v2";
+const CACHE = "salesforce-admin-drill-v3";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css",
-  "./app.js",
+  "./styles.css?v=20260922-1",
+  "./app.js?v=20260922-1",
   "./manifest.webmanifest",
   "./icon.svg",
   "./icon-192.png",
@@ -25,10 +25,27 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
+  const request = event.request;
+  const isAppShell = request.mode === "navigate"
+    || request.destination === "script"
+    || request.destination === "style"
+    || request.url.endsWith(".md");
+
+  if (isAppShell) {
+    event.respondWith(
+      fetch(request).then((response) => {
+        const copy = response.clone();
+        caches.open(CACHE).then((cache) => cache.put(request, copy));
+        return response;
+      }).catch(() => caches.match(request)),
+    );
+    return;
+  }
+
   event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request).then((response) => {
+    caches.match(request).then((cached) => cached || fetch(request).then((response) => {
       const copy = response.clone();
-      caches.open(CACHE).then((cache) => cache.put(event.request, copy));
+      caches.open(CACHE).then((cache) => cache.put(request, copy));
       return response;
     })),
   );

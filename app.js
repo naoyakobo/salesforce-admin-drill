@@ -596,7 +596,10 @@ document.querySelector("#install-button").addEventListener("click", async () => 
 });
 
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js"));
+  window.addEventListener("load", async () => {
+    const registration = await navigator.serviceWorker.register("./sw.js");
+    await registration.update();
+  });
 }
 
 bootstrap();
