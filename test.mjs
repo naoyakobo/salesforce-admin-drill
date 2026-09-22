@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 
 const markdown = readFileSync("Salesforce_Admin_Practice_Questions_Draft.md", "utf8");
 const notes = readFileSync("Salesforce_Admin_Study_Notes.md", "utf8");
+const inputNotes = readFileSync("Salesforce_Admin_Input_Notes.md", "utf8");
 const answerStart = markdown.indexOf("## 正答と解説");
 const questionPart = markdown.slice(0, answerStart);
 const answerPart = markdown.slice(answerStart);
@@ -53,15 +54,22 @@ const requiredNoteHeadings = [
   "## 試験直前の判断チェック",
 ];
 const missingNoteHeadings = requiredNoteHeadings.filter((heading) => !notes.includes(heading));
+const requiredInputHeadings = [
+  "## 運用ルール",
+  "## 現在反映済みのインプット範囲",
+  "## 追記ログ",
+];
+const missingInputHeadings = requiredInputHeadings.filter((heading) => !inputNotes.includes(heading));
 
-if (questions.length !== 150 || Object.keys(answers).length !== 150 || invalid.length || missingNoteHeadings.length) {
+if (questions.length !== 150 || Object.keys(answers).length !== 150 || invalid.length || missingNoteHeadings.length || missingInputHeadings.length) {
   console.error({
     questions: questions.length,
     answers: Object.keys(answers).length,
     invalid: invalid.map(({ id }) => id),
     missingNoteHeadings,
+    missingInputHeadings,
   });
   process.exitCode = 1;
 } else {
-  console.log("Question bank valid: 150 questions, 150 answers, 0 invalid entries. Study notes valid.");
+  console.log("Question bank valid: 150 questions, 150 answers, 0 invalid entries. Study notes and input ledger valid.");
 }
