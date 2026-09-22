@@ -1,4 +1,5 @@
 const BANK_URL = "./Salesforce_Admin_Practice_Questions_Draft.md";
+const NOTES_URL = "./Salesforce_Admin_Study_Notes.md";
 const STORAGE_KEY = "salesforce-admin-drill-v1";
 const app = document.querySelector("#app");
 
@@ -12,6 +13,7 @@ const initialState = {
 
 let bank = [];
 let bankMarkdown = "";
+let notesMarkdown = "";
 let state = loadState();
 let session = null;
 let deferredInstallPrompt = null;
@@ -397,37 +399,37 @@ function renderHistory() {
 function renderNotes() {
   session = null;
   setNav("notes");
-  const overview = extractMarkdownSection(bankMarkdown, "## 方針", "## 問題");
+  const essentials = extractMarkdownSection(notesMarkdown, "## まず押さえる全体像", "## 試験直前の判断チェック");
+  const checklist = extractMarkdownSection(notesMarkdown, "## 試験直前の判断チェック", "__END__");
   const corrections = extractMarkdownSection(bankMarkdown, "## 修正履歴", "## 公式参照先");
   const references = extractMarkdownSection(bankMarkdown, "## 公式参照先", "## 確認事項");
-  const questions = extractMarkdownSection(bankMarkdown, "## 問題", "## 正答と解説");
 
   app.innerHTML = `
     <section class="hero card">
       <div class="hero-row">
         <div>
           <h2>学習メモ</h2>
-          <p>問題作成時のインプットを読み物として確認できます。公式情報に合わせて直した内容もここに残しています。</p>
+          <p>この内容を読めば問題を解けるようになることを狙った要点集です。迷ったときは判断軸を読み返してください。</p>
         </div>
       </div>
     </section>
     <section class="notes-tabs" aria-label="メモの表示切り替え">
-      <button class="note-tab active" data-note="overview" type="button">方針</button>
+      <button class="note-tab active" data-note="essentials" type="button">要点</button>
+      <button class="note-tab" data-note="checklist" type="button">判断軸</button>
       <button class="note-tab" data-note="corrections" type="button">修正履歴</button>
-      <button class="note-tab" data-note="questions" type="button">問題本文</button>
       <button class="note-tab" data-note="references" type="button">参照</button>
     </section>
     <section class="notes-content card" id="notes-content"></section>
   `;
 
-  const sections = { overview, corrections, questions, references };
+  const sections = { essentials, checklist, corrections, references };
   const content = document.querySelector("#notes-content");
   const show = (key) => {
     document.querySelectorAll(".note-tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.note === key));
     content.innerHTML = markdownToHtml(sections[key] || "表示できるメモがありません。");
   };
   document.querySelectorAll(".note-tab").forEach((button) => button.addEventListener("click", () => show(button.dataset.note)));
-  show("overview");
+  show("essentials");
 }
 
 function renderSettings() {
@@ -468,6 +470,7 @@ function renderSettings() {
 function extractMarkdownSection(markdown, startHeading, endHeading) {
   const start = markdown.indexOf(startHeading);
   if (start < 0) return "";
+  if (endHeading === "__END__") return markdown.slice(start).trim();
   const end = markdown.indexOf(endHeading, start + startHeading.length);
   return markdown.slice(start, end < 0 ? markdown.length : end).trim();
 }
@@ -564,6 +567,9 @@ async function bootstrap() {
     const response = await fetch(BANK_URL);
     if (!response.ok) throw new Error("問題集を取得できませんでした。");
     bankMarkdown = await response.text();
+    const notesResponse = await fetch(NOTES_URL);
+    if (!notesResponse.ok) throw new Error("学習メモを取得できませんでした。");
+    notesMarkdown = await notesResponse.text();
     bank = parseBank(bankMarkdown);
     if (!bank.length || bank.some((question) => !question.correct)) throw new Error("問題集の解析に失敗しました。");
     renderHome();

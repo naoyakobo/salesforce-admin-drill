@@ -21,6 +21,7 @@ node server.mjs
 - PWA としてホーム画面へ追加
 
 問題は `Salesforce_Admin_Practice_Questions_Draft.md` から読み込まれます。
+学習メモは `Salesforce_Admin_Study_Notes.md` から読み込まれます。
 
 ## 検査
 

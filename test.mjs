@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 
 const markdown = readFileSync("Salesforce_Admin_Practice_Questions_Draft.md", "utf8");
+const notes = readFileSync("Salesforce_Admin_Study_Notes.md", "utf8");
 const answerStart = markdown.indexOf("## 正答と解説");
 const questionPart = markdown.slice(0, answerStart);
 const answerPart = markdown.slice(answerStart);
@@ -43,9 +44,24 @@ const invalid = questions.filter((question) => (
   || question.correct.some((key) => !question.choices.some((choice) => choice.key === key))
 ));
 
-if (questions.length !== 150 || Object.keys(answers).length !== 150 || invalid.length) {
-  console.error({ questions: questions.length, answers: Object.keys(answers).length, invalid: invalid.map(({ id }) => id) });
+const requiredNoteHeadings = [
+  "## まず押さえる全体像",
+  "## データモデルと関係",
+  "## 権限と共有",
+  "## 自動化",
+  "## レポートとダッシュボード",
+  "## 試験直前の判断チェック",
+];
+const missingNoteHeadings = requiredNoteHeadings.filter((heading) => !notes.includes(heading));
+
+if (questions.length !== 150 || Object.keys(answers).length !== 150 || invalid.length || missingNoteHeadings.length) {
+  console.error({
+    questions: questions.length,
+    answers: Object.keys(answers).length,
+    invalid: invalid.map(({ id }) => id),
+    missingNoteHeadings,
+  });
   process.exitCode = 1;
 } else {
-  console.log("Question bank valid: 150 questions, 150 answers, 0 invalid entries.");
+  console.log("Question bank valid: 150 questions, 150 answers, 0 invalid entries. Study notes valid.");
 }

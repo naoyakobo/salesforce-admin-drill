@@ -1,14 +1,15 @@
-const CACHE = "salesforce-admin-drill-v3";
+const CACHE = "salesforce-admin-drill-v4";
 const ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=20260922-1",
-  "./app.js?v=20260922-1",
+  "./styles.css?v=20260922-2",
+  "./app.js?v=20260922-2",
   "./manifest.webmanifest",
   "./icon.svg",
   "./icon-192.png",
   "./icon-512.png",
   "./Salesforce_Admin_Practice_Questions_Draft.md",
+  "./Salesforce_Admin_Study_Notes.md",
 ];
 
 self.addEventListener("install", (event) => {
